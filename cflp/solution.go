@@ -1,12 +1,49 @@
 package cflp
 
-import "fmt"
+import (
+	"fmt"
+	"io"
+	"math"
+	"math/rand"
+)
+
+// AreaOperator is an operator to change the solution to a near state.
+type AreaOperator int
+
+const (
+	// OpFlip AreaOperator.
+	// Randomly open/close a facility.
+	OpFlip AreaOperator = iota
+	// OpRangeFlip AreaOperator.
+	// Randomly open/close a sequence of facilities.
+	OpRangeFlip
+	// OpReverse AreaOperator.
+	// Randomly reverse a sequence of facilities.
+	OpReverse
+)
 
 // Solution represents a solution of a CFLP.
 type Solution struct {
 	*Problem
-	X []bool
-	Y [][]int
+	X       []bool
+	Y       [][]int
+	RunTime float64
+}
+
+// CopySolution performs a deep copy.
+// The problem will not be deeply copied.
+func CopySolution(sol *Solution) *Solution {
+	ret := &Solution{
+		Problem: sol.Problem,
+		X:       make([]bool, sol.N),
+		Y:       make([][]int, sol.N),
+	}
+	copy(ret.X, sol.X)
+	for i := range ret.Y {
+		ret.Y[i] = make([]int, sol.M)
+		copy(ret.Y[i], sol.Y[i])
+	}
+	return ret
 }
 
 // Valid determines if the current total capacity can satisfy all demands.
@@ -25,6 +62,40 @@ func (s *Solution) Open(i int) {
 	s.X[i] = true
 }
 
+// RandomAreaOperate randomly picks an operator and operates the solution.
+func (s *Solution) RandomAreaOperate() {
+	op := AreaOperator(rand.Intn(3))
+	s.AreaOperate(op)
+}
+
+// Shuffle randomly generates a state of the facilities.
+func (s *Solution) Shuffle() {
+	state := rand.Intn(1 << uint(s.N))
+	for i := range s.X {
+		s.X[i] = 1<<uint(i)&state > 0
+	}
+}
+
+// AreaOperate operates the solution by the given operator.
+func (s *Solution) AreaOperate(op AreaOperator) {
+	if op == OpFlip {
+		pos := rand.Intn(s.N)
+		s.X[pos] = !s.X[pos]
+	} else if op == OpRangeFlip {
+		posX := rand.Intn(s.N)
+		posY := rand.Intn(s.N-posX) + posX
+		for i := posX; i <= posY; i++ {
+			s.X[i] = !s.X[i]
+		}
+	} else if op == OpReverse {
+		posX := rand.Intn(s.N)
+		posY := rand.Intn(s.N-posX) + posX
+		for i := posX; i < posY/2; i++ {
+			s.X[i] = s.X[posY-i]
+		}
+	}
+}
+
 // Assign assigns demands to facility based on current opened facilities.
 func (s *Solution) Assign() {
 	totalDemand := s.TotalDemand
@@ -33,11 +104,16 @@ func (s *Solution) Assign() {
 	for j := range s.Demands {
 		demands[j] = s.Demands[j]
 	}
+	for i := range s.Y {
+		for j := range s.Y[i] {
+			s.Y[i][j] = 0
+		}
+	}
 	for totalDemand > 0 {
 		// find the cheapest cost
 		minI := 0
 		minJ := 0
-		minCost := int(^uint(0) >> 1)
+		minCost := math.MaxInt32
 		for i := range s.Costs {
 			if !s.X[i] || filled[i] == s.Capacities[i] {
 				continue
@@ -85,29 +161,29 @@ func (s *Solution) Cost() float64 {
 }
 
 // Display prints the solution.
-func (s *Solution) Display() {
-	fmt.Println(s.Cost())
+func (s *Solution) Display(w io.Writer) {
+	fmt.Fprintln(w, s.Cost())
 	if s.X[0] {
-		fmt.Print(1)
+		fmt.Fprint(w, 1)
 	} else {
-		fmt.Print(0)
+		fmt.Fprint(w, 0)
 	}
 	for i := 1; i < s.N; i++ {
 		if s.X[i] {
-			fmt.Printf(" 1")
+			fmt.Fprintf(w, " 1")
 		} else {
-			fmt.Printf(" 0")
+			fmt.Fprintf(w, " 0")
 		}
 	}
-	fmt.Printf("\n")
+	fmt.Fprintf(w, "\n")
+	fmt.Fprintf(w, "%d", s.Y[0][0])
 	for i := range s.Y {
-		fmt.Printf("%d", s.Y[i][0])
 		for j := range s.Y[i] {
-			if j == 0 {
+			if i == 0 && j == 0 {
 				continue
 			}
-			fmt.Printf("\t%d", s.Y[i][j])
+			fmt.Fprintf(w, " %d", s.Y[i][j])
 		}
-		fmt.Printf("\n")
 	}
+	fmt.Fprintf(w, "\n")
 }

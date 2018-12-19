@@ -15,6 +15,12 @@
 package cmd
 
 import (
+	"fmt"
+	"math/rand"
+	"os"
+	"strconv"
+	"time"
+
 	"github.com/hinanawitenshi/CFLP/cflp"
 	"github.com/spf13/cobra"
 )
@@ -29,9 +35,29 @@ var solveCmd = &cobra.Command{
 	Long: `Solve a capacitated facility location problem with an input problem
 and an algorithm specified.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		solver := cflp.NewSolver(solveInput)
-		sol := solver.Solve(cflp.Algorithm(solveAlg))
-		sol.Display()
+		rand.Seed(time.Now().Unix())
+		if solveInput != "all" {
+			solver := cflp.NewSolver(solveInput)
+			sol := solver.Solve(cflp.Algorithm(solveAlg))
+			sol.Display(os.Stdout)
+			fmt.Printf("time: %.5f\n", sol.RunTime)
+			return
+		}
+		tblF, _ := os.OpenFile("res/results/"+solveAlg+"/tbl",
+			os.O_CREATE|os.O_WRONLY, os.ModePerm)
+		tblF.WriteString(",Result,Time(s)\n")
+		defer tblF.Close()
+		for i := 1; i <= 71; i++ {
+			fpath := "res/instances/p" + strconv.Itoa(i)
+			solver := cflp.NewSolver(fpath)
+			sol := solver.Solve(cflp.Algorithm(solveAlg))
+			outF, _ := os.OpenFile("res/results/"+solveAlg+"/p"+
+				strconv.Itoa(i), os.O_CREATE|os.O_WRONLY, os.ModePerm)
+			defer outF.Close()
+			sol.Display(outF)
+			tblF.WriteString(fmt.Sprintf("p%d,%.3f,%.5f\n", i, sol.Cost(),
+				sol.RunTime))
+		}
 	},
 }
 
